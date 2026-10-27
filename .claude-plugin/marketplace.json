@@ -1,0 +1,5 @@
+{
+  "name": "roadmap-sesion",
+  "owner": { "name": "Growth4U" },
+  "plugins": [{ "name": "roadmap-sesion", "source": "./" }]
+}

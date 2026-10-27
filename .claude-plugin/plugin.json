@@ -1,0 +1,11 @@
+{
+  "name": "roadmap-sesion",
+  "version": "0.1.0",
+  "description": "Panel lateral con el nombre de la sesión, lo hecho y lo pendiente, leído de las tareas nativas (TodoWrite)",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Growth4U"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Growth4U-systems/roadmap-sesion"
+}
