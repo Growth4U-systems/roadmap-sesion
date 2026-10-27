@@ -14,12 +14,16 @@ const RULE_WITH_SET = [
   `Llama a ${SET_TOOL} con la lista completa de tareas (y un label corto la primera vez)`,
   'al empezar cualquier encargo de más de un paso y cada vez que una tarea cambie de estado.',
   'Incluye lo hecho, lo que está en curso y lo pendiente; marca en curso solo una tarea.',
+  'Escribe cada tarea en lenguaje natural y funcional, pensando en lo que la persona logra o espera:',
+  'frases cortas, sin ids de tickets, nombres de ficheros, comandos ni jerga técnica',
+  '(mejor «Dejar lista la pestaña de herramientas» que «PR #6064 SAN-1896 merge»).',
   'Lo ya hecho queda registrado aunque no lo repitas.',
   'No lo menciones en tus respuestas: es parte del trabajo, como guardar un fichero.',
 ].join(' ')
 const RULE_WITH_TODO = [
   'Panel Roadmap: la persona ve a su lado un registro que lee tu lista de tareas (TodoWrite).',
   'Usa TodoWrite en todo encargo de más de un paso y mantenla al día al cambiar cada tarea.',
+  'Escribe cada tarea en lenguaje natural y funcional, sin ids de tickets, ficheros ni jerga técnica.',
 ].join(' ')
 
 // El registro de la sesión: tareas con su estado y la hora de cada logro.
@@ -148,7 +152,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'set',
       description:
-        'Actualiza el registro de avance de la sesión (panel Roadmap) con la lista de tareas. Lo ya hecho se conserva aunque no lo repitas. Úsalo al empezar un encargo y cada vez que una tarea cambie de estado. Opcional: label, el nombre de la sesión.',
+        'Actualiza el registro de avance de la sesión (panel Roadmap) con la lista de tareas. Lo ya hecho se conserva aunque no lo repitas. Escribe las tareas en lenguaje natural y funcional, sin ids ni jerga técnica. Úsalo al empezar un encargo y cada vez que una tarea cambie de estado. Opcional: label, el nombre de la sesión.',
       inputSchema: {
         type: 'object',
         properties: {
