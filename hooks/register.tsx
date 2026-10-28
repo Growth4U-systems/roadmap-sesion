@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Todo } from '../types'
+import type { Encargos, Todo } from '../types'
 
 const PANE = 'roadmap-sesion'
 const TITLE = 'Roadmap'
@@ -19,6 +19,14 @@ const RULE_WITH_SET = [
   '(mejor «Dejar lista la pestaña de herramientas» que «PR #6064 SAN-1896 merge»).',
   'Lo ya hecho queda registrado aunque no lo repitas.',
   'No lo menciones en tus respuestas: es parte del trabajo, como guardar un fichero.',
+].join(' ')
+const RE_ISSUE = /\b(SAN|PAN|GRO|ALA|GBRAIN)-\d+\b/i
+const RULE_OBJETIVO = [
+  'Esta sesión no tiene issue de Linear y ya va por su tercer encargo.',
+  'Antes de seguir, pregunta a la persona qué quiere lograr en esta sesión y cómo sabrá que está logrado,',
+  'una pregunta por mensaje, dos o tres como mucho para afinar.',
+  `Guárdalo con la herramienta ${SET_TOOL} (objetivo, exito) y sigue con el encargo.`,
+  'Si más adelante dice que el objetivo cambia, vuelve a guardarlo.',
 ].join(' ')
 const RULE_WITH_TODO = [
   'Panel Roadmap: la persona ve a su lado un registro que lee tu lista de tareas (TodoWrite).',
@@ -46,6 +54,13 @@ const objetivo = atom(
 const exito = atom({ plugin: 'roadmap-sesion', key: 'exito' } as const, null as string | null, {
   shape: 'exito-1',
 })
+
+// Encargos escritos y si alguno cita un issue: decide si se pide el objetivo.
+const encargos = atom(
+  { plugin: 'roadmap-sesion', key: 'encargos' } as const,
+  { n: 0, citaIssue: false } as Encargos,
+  { shape: 'encargos-1' },
+)
 
 type Saved = {
   label: string | null
@@ -252,6 +267,8 @@ export const register: Register = on => {
   // El primer encargo escrito da nombre a la sesión si nadie la nombró.
   on('prompt.submit', async ($, e, next) => {
     if (!e.command && !e.isMeta) {
+      const cita = RE_ISSUE.test(e.text)
+      await update($, encargos, prev => ({ n: prev.n + 1, citaIssue: prev.citaIssue || cita }))
       const current = await read($, label)
       const line = firstLine(e.text)
       if (!current && line) {
@@ -270,10 +287,14 @@ export const register: Register = on => {
     const hasSet = e.tools.includes(SET_TOOL)
     if (!hasTodo && !hasSet) return out
     const text = hasTodo ? RULE_WITH_TODO : RULE_WITH_SET
-
-    return {
-      sections: [...out.sections, { id: 'roadmap-sesion:regla', text, scope: 'session' as const }],
+    const sections = [...out.sections, { id: 'roadmap-sesion:regla', text, scope: 'session' as const }]
+    // Sin issue y pasado el segundo encargo: que pregunte el objetivo, hasta que exista.
+    const [enc, goal] = await Promise.all([read($, encargos), read($, objetivo)])
+    if (hasSet && enc.n >= 3 && !enc.citaIssue && !goal) {
+      sections.push({ id: 'roadmap-sesion:objetivo', text: RULE_OBJETIVO, scope: 'session' as const })
     }
+
+    return { sections }
   }).catch(($, e, next) => next(e))
 
   // La lista nativa, cuando existe, alimenta el mismo registro.

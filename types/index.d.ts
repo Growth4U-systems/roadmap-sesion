@@ -6,6 +6,9 @@ export type Todo = {
   completedAt?: number
 }
 
+/** Cuántos encargos lleva la sesión y si alguno cita un issue de Linear. */
+export type Encargos = { n: number; citaIssue: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'roadmap-sesion': {
@@ -13,6 +16,7 @@ declare module 'claude-code' {
       label: Shaped<string | null>
       objetivo: Shaped<string | null>
       exito: Shaped<string | null>
+      encargos: Shaped<Encargos>
     }
   }
 }

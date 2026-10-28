@@ -219,3 +219,47 @@ test('set sin tareas ni objetivo se rechaza', async ($, on) => {
   const out = await $.tool.call({ tool: SET })
   expect(String((out as { deny?: unknown })?.deny ?? '')).toMatch(/todos/)
 })
+
+const BASE_COMPOSE = { model: 'm', promptModel: 'm', surfaces: [], outputStyle: null, traits: [] } as const
+
+async function pideObjetivo($: Parameters<Parameters<typeof test>[1]>[0]): Promise<boolean> {
+  const out = await $.prompt.compose({ ...BASE_COMPOSE, tools: ['Bash', SET] })
+  return out.sections.some(s => s.id === 'roadmap-sesion:objetivo')
+}
+
+test('pide objetivo al tercer encargo sin issue y deja de pedirlo cuando existe', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  await $.prompt.submit({ text: 'Mira cómo va el deck' })
+  expect(await pideObjetivo($)).toBe(false)
+  await $.prompt.submit({ text: 'Ahora cambia el color' })
+  expect(await pideObjetivo($)).toBe(false)
+  await $.prompt.submit({ text: 'Y añade una slide' })
+  expect(await pideObjetivo($)).toBe(true)
+  const out = await $.prompt.compose({ ...BASE_COMPOSE, tools: ['Bash', SET] })
+  expect(out.sections.find(s => s.id === 'roadmap-sesion:objetivo')?.text).toMatch(/qué quiere lograr/)
+
+  await $.tool.call({ tool: SET, objetivo: 'Deck de Monzo listo', exito: 'Alfonso lo aprueba' })
+  expect(await pideObjetivo($)).toBe(false)
+})
+
+test('no pide objetivo si algún encargo cita un issue ni sin la herramienta', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  await $.prompt.submit({ text: 'arregla SAN-12' })
+  await $.prompt.submit({ text: 'sigue' })
+  await $.prompt.submit({ text: 'y sigue' })
+  expect(await pideObjetivo($)).toBe(false)
+
+  const sinSet = await $.prompt.compose({ ...BASE_COMPOSE, tools: ['Bash'] })
+  expect(sinSet.sections.some(s => s.id === 'roadmap-sesion:objetivo')).toBe(false)
+})
+
+test('un issue citado tarde tampoco vuelve a pedir el objetivo', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  for (const t of ['a', 'b', 'c']) await $.prompt.submit({ text: t })
+  expect(await pideObjetivo($)).toBe(true)
+  await $.prompt.submit({ text: 'esto es PAN-3' })
+  expect(await pideObjetivo($)).toBe(false)
+})
