@@ -11,6 +11,8 @@ declare module 'claude-code' {
     'roadmap-sesion': {
       todos: Shaped<Todo[]>
       label: Shaped<string | null>
+      objetivo: Shaped<string | null>
+      exito: Shaped<string | null>
     }
   }
 }

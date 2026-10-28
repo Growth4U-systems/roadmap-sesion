@@ -18,7 +18,7 @@ const PANE = {
 const SET = 'mcp__roadmap-sesion__set'
 
 // Lo que el motor contestaría debajo del mod.
-function world(on: On, opts: { store?: Record<string, unknown>; id?: string } = {}) {
+function world(on: On, opts: { store?: Record<string, unknown>; id?: string; guardado?: Record<string, unknown> } = {}) {
   const status: Array<string | undefined> = []
   on('session.cwd', () => ({ value: '/home/dev/mi-app' }))
   on('session.turns', () => ({ value: 2 }))
@@ -33,7 +33,22 @@ function world(on: On, opts: { store?: Record<string, unknown>; id?: string } = 
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
-  mock.store(on, opts.store)
+  if (opts.guardado) {
+    // Store a mano, para poder leer lo que el mod escribe.
+    const g = opts.guardado
+    on('store.get', (_, e) => ({ value: g[(e as { key: string }).key] }))
+    on('store.set', (_, e) => {
+      const { key, value } = e as { key: string; value: unknown }
+      g[key] = value
+      return { value: undefined }
+    })
+    on('store.delete', (_, e) => {
+      delete g[(e as { key: string }).key]
+      return { value: undefined }
+    })
+  } else {
+    mock.store(on, opts.store)
+  }
   const clock = mock.clock(on, { now: Date.UTC(2026, 9, 27, 9, 0) })
 
   return { clock, status }
@@ -160,4 +175,47 @@ test('la regla entra en el prompt solo si hay herramienta para cumplirla', async
 
   const conTodo = await $.prompt.compose({ ...base, tools: ['TodoWrite', SET] })
   expect(conTodo.sections.at(-1)?.text).toMatch(/TodoWrite/)
+})
+
+test('set guarda objetivo y éxito, los pinta y los persiste', async ($, on) => {
+  const guardado: Record<string, unknown> = {}
+  world(on, { guardado })
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'vscode', isInteractive: true })
+  const out = await $.tool.call({ tool: SET, objetivo: 'Que Treg cobre', exito: 'Factura emitida', todos: [] })
+  expect(String((out as { result?: unknown })?.result ?? '')).toMatch(/Objetivo guardado/)
+
+  const saved = guardado['s:sesion-1'] as { objetivo?: string; exito?: string }
+  expect(saved.objetivo).toBe('Que Treg cobre')
+  expect(saved.exito).toBe('Factura emitida')
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'vscode' })
+  expect((await ui.find({ type: 'Text', text: /Objetivo/ }))?.text).toBe('Objetivo: Que Treg cobre')
+  expect((await ui.find({ type: 'Text', text: /Éxito/ }))?.text).toBe('Éxito: Factura emitida')
+  await ui.unmount()
+})
+
+test('restore recupera objetivo y éxito al arrancar', async ($, on) => {
+  world(on, {
+    id: 'sesion-vieja',
+    store: {
+      's:sesion-vieja': {
+        label: 'Treg',
+        objetivo: 'Que Treg cobre',
+        exito: 'Factura emitida',
+        todos: [{ content: 'Datos', status: 'pending', activeForm: '' }],
+        updatedAt: 0,
+      },
+    },
+  })
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'vscode', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'vscode' })
+  expect((await ui.find({ type: 'Text', text: /Objetivo/ }))?.text).toBe('Objetivo: Que Treg cobre')
+  expect((await ui.find({ type: 'Text', text: /Éxito/ }))?.text).toBe('Éxito: Factura emitida')
+  await ui.unmount()
+})
+
+test('set sin tareas ni objetivo se rechaza', async ($, on) => {
+  world(on)
+  const out = await $.tool.call({ tool: SET })
+  expect(String((out as { deny?: unknown })?.deny ?? '')).toMatch(/todos/)
 })

@@ -37,7 +37,28 @@ const label = atom(
   { shape: 'label-1' },
 )
 
-type Saved = { label: string | null; todos: Todo[]; updatedAt: number }
+// Lo que la persona quiere lograr en la sesión y cómo sabrá que está logrado.
+const objetivo = atom(
+  { plugin: 'roadmap-sesion', key: 'objetivo' } as const,
+  null as string | null,
+  { shape: 'objetivo-1' },
+)
+const exito = atom({ plugin: 'roadmap-sesion', key: 'exito' } as const, null as string | null, {
+  shape: 'exito-1',
+})
+
+type Saved = {
+  label: string | null
+  objetivo?: string | null
+  exito?: string | null
+  todos: Todo[]
+  updatedAt: number
+}
+
+function cleanText(v: unknown): string | null {
+  const t = typeof v === 'string' ? v.trim() : ''
+  return t ? t : null
+}
 
 function firstLine(text: string, max = 72): string {
   const line = text.trim().split('\n')[0]?.trim() ?? ''
@@ -112,14 +133,16 @@ function statusLine(list: readonly Todo[], name: string | null): string | undefi
 
 // Guarda el registro en disco por sesión, para retomarlo; y refresca la status line.
 async function persist($: EngineInterface): Promise<void> {
-  const [list, name, id, now] = await Promise.all([
+  const [list, name, goal, win, id, now] = await Promise.all([
     read($, todos),
     read($, label),
+    read($, objetivo),
+    read($, exito),
     $.session.id(),
     $.clock.now(),
   ])
   $.ui.status(statusLine(list, name))
-  const saved: Saved = { label: name, todos: list, updatedAt: now }
+  const saved: Saved = { label: name, objetivo: goal, exito: win, todos: list, updatedAt: now }
   await $.store.set(`s:${id}`, saved)
   const index = ((await $.store.get('index')) as string[] | undefined) ?? []
   const next = [...index.filter(k => k !== id), id]
@@ -140,6 +163,10 @@ async function restore($: EngineInterface): Promise<void> {
     const name = saved.label
     await update($, label, () => name)
   }
+  const goal = cleanText(saved.objetivo)
+  if (goal) await update($, objetivo, () => goal)
+  const win = cleanText(saved.exito)
+  if (win) await update($, exito, () => win)
   $.ui.status(statusLine(list, saved.label ?? null))
 }
 
@@ -152,11 +179,13 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'set',
       description:
-        'Actualiza el registro de avance de la sesión (panel Roadmap) con la lista de tareas. Lo ya hecho se conserva aunque no lo repitas. Escribe las tareas en lenguaje natural y funcional, sin ids ni jerga técnica. Úsalo al empezar un encargo y cada vez que una tarea cambie de estado. Opcional: label, el nombre de la sesión.',
+        'Actualiza el registro de avance de la sesión (panel Roadmap) con la lista de tareas. Lo ya hecho se conserva aunque no lo repitas. Escribe las tareas en lenguaje natural y funcional, sin ids ni jerga técnica. Úsalo al empezar un encargo y cada vez que una tarea cambie de estado. Opcional: label, el nombre de la sesión; objetivo y exito, lo que la persona quiere lograr en la sesión y cómo sabrá que está logrado (se pueden mandar solos, sin todos).',
       inputSchema: {
         type: 'object',
         properties: {
           label: { type: 'string', description: 'Nombre corto de la sesión' },
+          objetivo: { type: 'string', description: 'Qué quiere lograr la persona en esta sesión' },
+          exito: { type: 'string', description: 'Cómo sabrá que está logrado' },
           todos: {
             type: 'array',
             items: {
@@ -170,7 +199,6 @@ export const register: Register = on => {
             },
           },
         },
-        required: ['todos'],
       },
       isDeferred: false,
     })
@@ -187,20 +215,25 @@ export const register: Register = on => {
   // La herramienta propia: el modelo empuja el avance aunque no tenga TodoWrite.
   on('tool.call', { tool: SET_TOOL }, async ($, e) => {
     const args = e as unknown as Record<string, unknown>
-    const incoming = toTodos(args.todos)
-    if (!incoming) return { deny: 'todos debe ser una lista' }
+    const incoming = args.todos === undefined ? null : toTodos(args.todos)
+    const goal = cleanText(args.objetivo)
+    const win = cleanText(args.exito)
+    if (!incoming && !goal && !win) return { deny: 'todos debe ser una lista (o manda objetivo y exito)' }
     const now = await $.clock.now()
-    await update($, todos, prev => mergeLog(prev, incoming, now))
+    if (incoming) await update($, todos, prev => mergeLog(prev, incoming, now))
     if (typeof args.label === 'string' && args.label.trim()) {
       const name = args.label.trim()
       await update($, label, () => name)
     }
+    if (goal) await update($, objetivo, () => goal)
+    if (win) await update($, exito, () => win)
     await persist($)
     void $.ui.open({ id: PANE, title: TITLE })
     const list = await read($, todos)
     const done = list.filter(t => t.status === 'completed').length
+    const notas = [goal || win ? 'Objetivo guardado.' : '', `Roadmap actualizado: ${done}/${list.length} hecho.`]
 
-    return { result: `Roadmap actualizado: ${done}/${list.length} hecho.` }
+    return { result: notas.filter(Boolean).join(' ') }
   }).catch(() => ({ deny: 'No se pudo actualizar el panel Roadmap' }))
 
   on('command.run', { command: 'roadmap' }, async ($, e) => {
@@ -260,9 +293,11 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const [list, name, cwd, turns] = await Promise.all([
+    const [list, name, goal, win, cwd, turns] = await Promise.all([
       read($, todos),
       read($, label),
+      read($, objetivo),
+      read($, exito),
       $.session.cwd(),
       $.session.turns(),
     ])
@@ -282,6 +317,12 @@ export const register: Register = on => {
         <Text dimColor>
           {basename(cwd)} · {turns} {turns === 1 ? 'turno' : 'turnos'}
         </Text>
+        {goal && (
+          <Box marginTop={1}>
+            <Text>Objetivo: {goal}</Text>
+          </Box>
+        )}
+        {win && <Text dimColor>Éxito: {win}</Text>}
         <Box marginTop={1}>
           <Text>
             {bar} {done.length}/{total} hecho
