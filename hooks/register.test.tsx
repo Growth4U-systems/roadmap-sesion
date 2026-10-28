@@ -263,3 +263,39 @@ test('un issue citado tarde tampoco vuelve a pedir el objetivo', async ($, on) =
   await $.prompt.submit({ text: 'esto es PAN-3' })
   expect(await pideObjetivo($)).toBe(false)
 })
+
+test('no pide objetivo en sesiones no interactivas', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'terminal', isInteractive: false })
+  for (const t of ['a', 'b', 'c']) await $.prompt.submit({ text: t })
+  expect(await pideObjetivo($)).toBe(false)
+})
+
+test('deja de pedir el objetivo tras tres veces o si la persona dice que no aplica', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'vscode', isInteractive: true })
+  for (const t of ['a', 'b', 'c']) await $.prompt.submit({ text: t })
+  expect(await pideObjetivo($)).toBe(true)
+  expect(await pideObjetivo($)).toBe(true) // el mismo encargo, lo que haga falta
+  await $.prompt.submit({ text: 'd' })
+  expect(await pideObjetivo($)).toBe(true)
+  await $.prompt.submit({ text: 'e' })
+  expect(await pideObjetivo($)).toBe(true)
+  await $.prompt.submit({ text: 'f' })
+  expect(await pideObjetivo($)).toBe(false) // tres encargos pidiéndolo y basta
+})
+
+test('set con objetivo "no aplica" apaga la pregunta', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'base', scope: 'shared' }] }))
+  world(on)
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'vscode', isInteractive: true })
+  for (const t of ['a', 'b', 'c']) await $.prompt.submit({ text: t })
+  expect(await pideObjetivo($)).toBe(true)
+  await $.tool.call({ tool: SET, objetivo: 'no aplica' })
+  expect(await pideObjetivo($)).toBe(false)
+  const ui = await $.ui.mount({ ...PANE, surface: 'vscode' })
+  expect(await ui.find({ type: 'Text', text: /Objetivo/ })).toBeUndefined()
+  await ui.unmount()
+})

@@ -6,8 +6,8 @@ export type Todo = {
   completedAt?: number
 }
 
-/** Cuántos encargos lleva la sesión y si alguno cita un issue de Linear. */
-export type Encargos = { n: number; citaIssue: boolean }
+/** Cuántos encargos lleva la sesión, si alguno cita un issue de Linear, si es interactiva y cuántas veces se pidió el objetivo. */
+export type Encargos = { n: number; citaIssue: boolean; interactiva: boolean; pedidas: number }
 
 declare module 'claude-code' {
   interface PluginState {

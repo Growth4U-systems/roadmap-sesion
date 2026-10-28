@@ -21,11 +21,14 @@ const RULE_WITH_SET = [
   'No lo menciones en tus respuestas: es parte del trabajo, como guardar un fichero.',
 ].join(' ')
 const RE_ISSUE = /\b(SAN|PAN|GRO|ALA|GBRAIN)-\d+\b/i
+const MAX_PEDIDAS = 3
+const NO_APLICA = /^no aplica\b/i
 const RULE_OBJETIVO = [
   'Esta sesión no tiene issue de Linear y ya va por su tercer encargo.',
   'Antes de seguir, pregunta a la persona qué quiere lograr en esta sesión y cómo sabrá que está logrado,',
   'una pregunta por mensaje, dos o tres como mucho para afinar.',
   `Guárdalo con la herramienta ${SET_TOOL} (objetivo, exito) y sigue con el encargo.`,
+  'Si la persona no quiere declararlo, guarda objetivo "no aplica" y no insistas.',
   'Si más adelante dice que el objetivo cambia, vuelve a guardarlo.',
 ].join(' ')
 const RULE_WITH_TODO = [
@@ -58,7 +61,7 @@ const exito = atom({ plugin: 'roadmap-sesion', key: 'exito' } as const, null as 
 // Encargos escritos y si alguno cita un issue: decide si se pide el objetivo.
 const encargos = atom(
   { plugin: 'roadmap-sesion', key: 'encargos' } as const,
-  { n: 0, citaIssue: false } as Encargos,
+  { n: 0, citaIssue: false, interactiva: true, pedidas: 0 } as Encargos,
   { shape: 'encargos-1' },
 )
 
@@ -187,6 +190,8 @@ async function restore($: EngineInterface): Promise<void> {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const interactiva = (e as { isInteractive?: boolean }).isInteractive !== false
+    await update($, encargos, prev => ({ ...prev, interactiva }))
     await $.command.register({
       name: 'roadmap',
       description: 'Abre el panel Roadmap; con texto, pone nombre a la sesión',
@@ -268,7 +273,14 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!e.command && !e.isMeta) {
       const cita = RE_ISSUE.test(e.text)
-      await update($, encargos, prev => ({ n: prev.n + 1, citaIssue: prev.citaIssue || cita }))
+      const goal = await read($, objetivo)
+      // Cada encargo nuevo sin objetivo, sin issue y pasado el segundo cuenta como una vez que se pide; tope de tres.
+      await update($, encargos, prev => {
+        const n = prev.n + 1
+        const citaIssue = prev.citaIssue || cita
+        const pide = prev.interactiva && n >= 3 && !citaIssue && !goal
+        return { ...prev, n, citaIssue, pedidas: pide ? prev.pedidas + 1 : prev.pedidas }
+      })
       const current = await read($, label)
       const line = firstLine(e.text)
       if (!current && line) {
@@ -290,7 +302,7 @@ export const register: Register = on => {
     const sections = [...out.sections, { id: 'roadmap-sesion:regla', text, scope: 'session' as const }]
     // Sin issue y pasado el segundo encargo: que pregunte el objetivo, hasta que exista.
     const [enc, goal] = await Promise.all([read($, encargos), read($, objetivo)])
-    if (hasSet && enc.n >= 3 && !enc.citaIssue && !goal) {
+    if (hasSet && enc.interactiva && enc.n >= 3 && !enc.citaIssue && !goal && enc.pedidas > 0 && enc.pedidas <= MAX_PEDIDAS) {
       sections.push({ id: 'roadmap-sesion:objetivo', text: RULE_OBJETIVO, scope: 'session' as const })
     }
 
@@ -338,7 +350,7 @@ export const register: Register = on => {
         <Text dimColor>
           {basename(cwd)} · {turns} {turns === 1 ? 'turno' : 'turnos'}
         </Text>
-        {goal && (
+        {goal && !NO_APLICA.test(goal) && (
           <Box marginTop={1}>
             <Text>Objetivo: {goal}</Text>
           </Box>
