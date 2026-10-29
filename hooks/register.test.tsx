@@ -131,6 +131,27 @@ test('el registro sobrevive al retomar la sesión', async ($, on) => {
   await ui.unmount()
 })
 
+test('lo hecho va de lo más nuevo a lo más viejo', async ($, on) => {
+  world(on, {
+    id: 'sesion-orden',
+    store: {
+      's:sesion-orden': {
+        label: 'Orden',
+        todos: [
+          { content: 'Primero', status: 'completed', activeForm: '', completedAt: Date.UTC(2026, 9, 26, 9, 0) },
+          { content: 'Último', status: 'completed', activeForm: '', completedAt: Date.UTC(2026, 9, 26, 11, 0) },
+        ],
+        updatedAt: 0,
+      },
+    },
+  })
+  await $.session.start({ cwd: '/home/dev/mi-app', surface: 'vscode', isInteractive: true })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'vscode' })
+  expect((await ui.find({ type: 'Text', text: /✓/ }))?.text).toMatch(/Último$/)
+  await ui.unmount()
+})
+
 test('la status line enseña lo que está en curso y el avance', async ($, on) => {
   const { status } = world(on)
   await $.tool.call({

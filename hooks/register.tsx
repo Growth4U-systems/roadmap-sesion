@@ -339,7 +339,7 @@ export const register: Register = on => {
     const pending = list.filter(t => t.status === 'pending')
     const done = list
       .filter(t => t.status === 'completed')
-      .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
+      .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
     const total = list.length
     const filled = total === 0 ? 0 : Math.round((done.length / total) * 10)
     const bar = `${'█'.repeat(filled)}${'░'.repeat(10 - filled)}`
